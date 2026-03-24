@@ -39,16 +39,11 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.buzbuz.smartautoclicker.R
 import com.buzbuz.smartautoclicker.core.base.extensions.applySafeContentInsets
 import com.buzbuz.smartautoclicker.databinding.FragmentScenariosBinding
-import com.buzbuz.smartautoclicker.feature.backup.ui.BackupDialogFragment
-import com.buzbuz.smartautoclicker.feature.backup.ui.BackupDialogFragment.Companion.FRAGMENT_TAG_BACKUP_DIALOG
-import com.buzbuz.smartautoclicker.scenarios.migration.ConditionsMigrationFragment
 import com.buzbuz.smartautoclicker.scenarios.creation.ScenarioCreationDialog
 import com.buzbuz.smartautoclicker.scenarios.list.adapter.ScenarioAdapter
 import com.buzbuz.smartautoclicker.scenarios.list.copy.ScenarioCopyDialog
 import com.buzbuz.smartautoclicker.scenarios.list.copy.ScenarioCopyDialog.Companion.FRAGMENT_TAG_COPY_DIALOG
 import com.buzbuz.smartautoclicker.scenarios.list.model.ScenarioListUiState
-import com.buzbuz.smartautoclicker.scenarios.migration.ConditionsMigrationFragment.Companion.FRAGMENT_RESULT_KEY_COMPLETED
-import com.buzbuz.smartautoclicker.scenarios.migration.ConditionsMigrationFragment.Companion.FRAGMENT_TAG_CONDITION_MIGRATION_DIALOG
 import com.buzbuz.smartautoclicker.settings.SettingsActivity
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -89,14 +84,12 @@ class ScenarioListFragment : Fragment() {
         super.onCreate(savedInstanceState)
 
         scenariosAdapter = ScenarioAdapter(
-            bitmapProvider = scenarioListViewModel::getConditionBitmap,
             startScenarioListener = ::onStartClicked,
             deleteScenarioListener = ::onDeleteClicked,
             exportClickListener = ::onExportClicked,
             copyClickedListener = ::showCopyScenarioDialog,
             expandCollapseListener = scenarioListViewModel::expandCollapseItem,
             onSortTypeClicked = scenarioListViewModel::updateSortType,
-            onSmartChipClicked = scenarioListViewModel::updateSmartVisible,
             onDumbChipClicked = scenarioListViewModel::updateDumbVisible,
             onSortOrderClicked = scenarioListViewModel::updateSortOrder,
         )
@@ -128,7 +121,6 @@ class ScenarioListFragment : Fragment() {
         lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { scenarioListViewModel.uiState.collect(::updateUiState) }
-                launch { scenarioListViewModel.needsConditionMigration.collect(::onConditionMigrationRequired) }
             }
         }
     }
@@ -138,15 +130,16 @@ class ScenarioListFragment : Fragment() {
 
         when (item.itemId) {
             R.id.action_export -> when {
-                uiState.type == ScenarioListUiState.Type.EXPORT -> showBackupDialog(
-                    isImport = false,
-                    smartScenariosToBackup = scenarioListViewModel.getSmartScenariosSelectedForBackup(),
-                    dumbScenariosToBackup = scenarioListViewModel.getDumbScenariosSelectedForBackup(),
-                )
+                uiState.type == ScenarioListUiState.Type.EXPORT -> {
+                    // Backup removed — just reset to selection mode
+                    scenarioListViewModel.setUiState(ScenarioListUiState.Type.SELECTION)
+                }
                 else -> scenarioListViewModel.setUiState(ScenarioListUiState.Type.EXPORT)
             }
 
-            R.id.action_import -> showBackupDialog(true)
+            R.id.action_import -> {
+                // Backup import removed
+            }
             R.id.action_cancel -> scenarioListViewModel.setUiState(ScenarioListUiState.Type.SELECTION)
             R.id.action_search -> scenarioListViewModel.setUiState(ScenarioListUiState.Type.SEARCH)
             R.id.action_select_all -> scenarioListViewModel.toggleAllScenarioSelectionForBackup()
@@ -226,20 +219,6 @@ class ScenarioListFragment : Fragment() {
         scenariosAdapter.submitList(uiState.listContent)
     }
 
-    private fun onConditionMigrationRequired(isRequired: Boolean) {
-        if (!isRequired) return
-        if (requireActivity().supportFragmentManager.findFragmentByTag(FRAGMENT_TAG_CONDITION_MIGRATION_DIALOG) != null)
-            return
-
-        val fragmentManager = requireActivity().supportFragmentManager
-        fragmentManager.setFragmentResultListener(FRAGMENT_RESULT_KEY_COMPLETED, this) { _, _ ->
-            scenarioListViewModel.refreshScenarioList()
-        }
-        ConditionsMigrationFragment
-            .newInstance()
-            .show(fragmentManager, FRAGMENT_TAG_CONDITION_MIGRATION_DIALOG)
-    }
-
     /**
      * Show an AlertDialog from this fragment.
      * This method will ensure that only one dialog is shown at the same time.
@@ -301,30 +280,11 @@ class ScenarioListFragment : Fragment() {
             .create())
     }
 
-    /**
-     * Shows the backup dialog fragment.
-     *
-     * @param isImport true to display in import mode, false for export.
-     * @param smartScenariosToBackup the list of identifiers for the smart scenarios to export. Null if isImport = true.
-     * @param dumbScenariosToBackup the list of identifiers for the dumb scenarios to export. Null if isImport = true.
-     *
-     */
-    private fun showBackupDialog(
-        isImport: Boolean,
-        smartScenariosToBackup: Collection<Long>? = null,
-        dumbScenariosToBackup: Collection<Long>? = null,
-    ) {
-        BackupDialogFragment
-            .newInstance(isImport, smartScenariosToBackup, dumbScenariosToBackup)
-            .show(requireActivity().supportFragmentManager, FRAGMENT_TAG_BACKUP_DIALOG)
-        scenarioListViewModel.setUiState(ScenarioListUiState.Type.SELECTION)
-    }
-
     private fun showCopyScenarioDialog(scenarioItem: ScenarioListUiState.Item.ScenarioItem.Valid) {
         ScenarioCopyDialog
             .newInstance(
                 scenarioId = scenarioItem.getScenarioId(),
-                isSmart = scenarioItem is ScenarioListUiState.Item.ScenarioItem.Valid.Smart,
+                isSmart = false,
                 defaultName = scenarioItem.displayName,
             )
             .show(requireActivity().supportFragmentManager, FRAGMENT_TAG_COPY_DIALOG)

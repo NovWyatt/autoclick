@@ -20,8 +20,7 @@
 
     <!-- Needed to start the SmartAutoClickerService as a foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- Needed to use the media projection with SmartAutoClickerService. Starting with SDK 34 -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+
     <!-- Needed to display the overlay_menu over other apps -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <!-- Needed to keep the screen active while detecting, only if defined by the user. -->
@@ -53,7 +52,6 @@
         <service
             android:name="${smartAutoClickerService}"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:foregroundServiceType="mediaProjection"
             android:exported="true">
 
             <intent-filter>

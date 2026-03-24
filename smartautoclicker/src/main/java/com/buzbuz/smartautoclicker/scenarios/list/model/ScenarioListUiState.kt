@@ -19,12 +19,11 @@ package com.buzbuz.smartautoclicker.scenarios.list.model
 import androidx.annotation.IntRange
 
 import com.buzbuz.smartautoclicker.R
-import com.buzbuz.smartautoclicker.core.domain.model.condition.ImageCondition
-import com.buzbuz.smartautoclicker.core.domain.model.scenario.Scenario
 import com.buzbuz.smartautoclicker.core.dumb.domain.model.DumbScenario
-import com.buzbuz.smartautoclicker.feature.smart.config.utils.ALPHA_DISABLED_ITEM_INT
-import com.buzbuz.smartautoclicker.feature.smart.config.utils.ALPHA_ENABLED_ITEM_INT
 import com.buzbuz.smartautoclicker.scenarios.list.sort.ScenarioSortType
+
+private const val ALPHA_DISABLED_ITEM_INT = 127
+private const val ALPHA_ENABLED_ITEM_INT = 255
 
 /**
  * Ui State for the [com.buzbuz.smartautoclicker.scenarios.list.ScenarioListFragment]
@@ -107,7 +106,6 @@ data class ScenarioListUiState(
 
         data class SortItem(
             val sortType: ScenarioSortType,
-            val smartVisible: Boolean,
             val dumbVisible: Boolean,
             val changeOrderChecked: Boolean,
         ): Item()
@@ -124,12 +122,6 @@ data class ScenarioListUiState(
                     override val lastStartTimestamp: Long,
                     override val startCount: Long,
                 ) : Empty(displayName = scenario.name, scenarioTypeIcon = R.drawable.ic_dumb)
-
-                data class Smart(
-                    override val scenario: Scenario,
-                    override val lastStartTimestamp: Long,
-                    override val startCount: Long,
-                ) : Empty(displayName = scenario.name, scenarioTypeIcon = R.drawable.ic_smart)
             }
 
             sealed class Valid(displayName: String, scenarioTypeIcon: Int) : ScenarioItem(displayName, scenarioTypeIcon) {
@@ -154,29 +146,6 @@ data class ScenarioListUiState(
                     val maxDurationText: String,
                 ) : Valid(displayName = scenario.name,  scenarioTypeIcon = R.drawable.ic_dumb) {
                     override fun getScenarioId(): Long = scenario.id.databaseId
-                }
-
-                data class Smart(
-                    override val scenario: Scenario,
-                    override val showExportCheckbox: Boolean = false,
-                    override val checkedForExport: Boolean = false,
-                    override val expanded: Boolean = false,
-                    override val lastStartTimestamp: Long,
-                    override val startCount: Long,
-                    val eventsItems: List<EventItem>,
-                    val triggerEventCount: Int,
-                    val detectionQuality: Int,
-                ) : Valid(displayName = scenario.name, scenarioTypeIcon = R.drawable.ic_smart) {
-
-                    override fun getScenarioId(): Long = scenario.id.databaseId
-
-                    data class EventItem(
-                        val id: Long,
-                        val eventName: String,
-                        val actionsCount: Int,
-                        val conditionsCount: Int,
-                        val firstCondition: ImageCondition?,
-                    )
                 }
             }
         }

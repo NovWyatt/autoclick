@@ -16,35 +16,28 @@
  */
 package com.buzbuz.smartautoclicker.scenarios.list
 
-import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.buzbuz.smartautoclicker.core.bitmaps.BitmapRepository
 
 import com.buzbuz.smartautoclicker.scenarios.list.model.ScenarioBackupSelection
 import com.buzbuz.smartautoclicker.scenarios.list.model.ScenarioListUiState
 import com.buzbuz.smartautoclicker.scenarios.list.model.isEmpty
 import com.buzbuz.smartautoclicker.scenarios.list.model.toggleAllScenarioSelectionForBackup
 import com.buzbuz.smartautoclicker.scenarios.list.model.toggleScenarioSelectionForBackup
-import com.buzbuz.smartautoclicker.core.domain.IRepository
-import com.buzbuz.smartautoclicker.core.domain.model.condition.ImageCondition
-import com.buzbuz.smartautoclicker.core.domain.model.scenario.Scenario
 import com.buzbuz.smartautoclicker.core.dumb.domain.IDumbRepository
 import com.buzbuz.smartautoclicker.core.dumb.domain.model.DumbScenario
-import com.buzbuz.smartautoclicker.feature.smart.config.utils.getImageConditionBitmap
 import com.buzbuz.smartautoclicker.scenarios.list.sort.ScenarioSortConfigRepository
 import com.buzbuz.smartautoclicker.scenarios.list.sort.ScenarioSortType
 
 import dagger.hilt.android.lifecycle.HiltViewModel
 
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -54,8 +47,6 @@ import javax.inject.Inject
 class ScenarioListViewModel @Inject constructor(
     private val filteredScenarioListUseCase: FilteredScenarioListUseCase,
     private val sortConfigRepository: ScenarioSortConfigRepository,
-    private val bitmapRepository: BitmapRepository,
-    private val smartRepository: IRepository,
     private val dumbRepository: IDumbRepository,
 ) : ViewModel() {
 
@@ -63,7 +54,7 @@ class ScenarioListViewModel @Inject constructor(
     private val uiStateType = MutableStateFlow(ScenarioListUiState.Type.SELECTION)
 
     /** Set of scenario with their items expanded. */
-    private val expandedItems = MutableStateFlow(ScenarioExpandedSelection())
+    private val expandedItems = MutableStateFlow(setOf<Long>())
     /** Set of scenario identifier selected for a backup. */
     private val selectedForBackup = MutableStateFlow(ScenarioBackupSelection())
 
@@ -72,7 +63,7 @@ class ScenarioListViewModel @Inject constructor(
         filteredScenarioListUseCase.orderedItems,
         selectedForBackup,
         expandedItems,
-    ) { stateType, items, backupSelection, expanded,  ->
+    ) { stateType, items, backupSelection, expanded  ->
         ScenarioListUiState(
             type = stateType,
             menuUiState = stateType.toMenuUiState(items, backupSelection),
@@ -86,8 +77,7 @@ class ScenarioListViewModel @Inject constructor(
         null,
     )
 
-    val needsConditionMigration: Flow<Boolean> =
-        smartRepository.legacyConditionsCount.map { it != 0 }
+    val needsConditionMigration: Flow<Boolean> = flowOf(false)
 
     /**
      * Change the ui state type.
@@ -97,7 +87,6 @@ class ScenarioListViewModel @Inject constructor(
         uiStateType.value = state
         selectedForBackup.value = selectedForBackup.value.copy(
             dumbSelection = emptySet(),
-            smartSelection = emptySet(),
         )
     }
 
@@ -127,12 +116,6 @@ class ScenarioListViewModel @Inject constructor(
         }
     }
 
-    fun updateSmartVisible(show: Boolean) {
-        viewModelScope.launch {
-            sortConfigRepository.setShowSmart(show)
-        }
-    }
-
     fun refreshScenarioList() {
         viewModelScope.launch {
             filteredScenarioListUseCase.refresh()
@@ -142,10 +125,6 @@ class ScenarioListViewModel @Inject constructor(
     /** @return the list of selected dumb scenario identifiers. */
     fun getDumbScenariosSelectedForBackup(): Collection<Long> =
         selectedForBackup.value.dumbSelection.toList()
-
-    /** @return the list of selected smart scenario identifiers. */
-    fun getSmartScenariosSelectedForBackup(): Collection<Long> =
-        selectedForBackup.value.smartSelection.toList()
 
     /**
      * Toggle the selected for backup state of a scenario.
@@ -169,20 +148,11 @@ class ScenarioListViewModel @Inject constructor(
 
         expandedItems.value = expandedItems.value.let { oldSelection ->
             when (item) {
-                is ScenarioListUiState.Item.ScenarioItem.Valid.Smart -> {
-                    oldSelection.copy(
-                        smartSelection = oldSelection.smartSelection
-                            .toMutableSet()
-                            .toggleExpandedSelection(item.getScenarioId())
-                    )
-                }
-
                 is ScenarioListUiState.Item.ScenarioItem.Valid.Dumb -> {
-                    oldSelection.copy(
-                        dumbSelection = oldSelection.dumbSelection
-                            .toMutableSet()
-                            .toggleExpandedSelection(item.getScenarioId())
-                    )
+                    oldSelection.toMutableSet().apply {
+                        val id = item.getScenarioId()
+                        if (!contains(id)) add(id) else remove(id)
+                    }
                 }
             }
         }
@@ -199,20 +169,9 @@ class ScenarioListViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             when (val scenario = item.scenario) {
                 is DumbScenario -> dumbRepository.deleteDumbScenario(scenario)
-                is Scenario -> smartRepository.deleteScenario(scenario.id)
             }
         }
     }
-
-    /**
-     * Get the bitmap corresponding to a condition.
-     * Loading is async and the result notified via the onBitmapLoaded argument.
-     *
-     * @param condition the condition to load the bitmap of.
-     * @param onBitmapLoaded the callback notified upon completion.
-     */
-    fun getConditionBitmap(condition: ImageCondition, onBitmapLoaded: (Bitmap?) -> Unit): Job =
-        getImageConditionBitmap(bitmapRepository, condition, onBitmapLoaded)
 
     private fun ScenarioListUiState.Type.toMenuUiState(
         scenarioItems: List<ScenarioListUiState.Item>,
@@ -237,35 +196,17 @@ class ScenarioListViewModel @Inject constructor(
                 showExportCheckbox = true,
                 checkedForExport = backupSelection.dumbSelection.contains(item.scenario.id.databaseId)
             )
-            is ScenarioListUiState.Item.ScenarioItem.Valid.Smart -> item.copy(
-                showExportCheckbox = true,
-                checkedForExport = backupSelection.smartSelection.contains(item.scenario.id.databaseId)
-            )
             else -> null
         }
     }
 
     private fun List<ScenarioListUiState.Item>.updateExpanded(
-        expanded: ScenarioExpandedSelection,
+        expanded: Set<Long>,
     ) : List<ScenarioListUiState.Item> = map { item ->
         when (item) {
             is ScenarioListUiState.Item.ScenarioItem.Valid.Dumb ->
-                item.copy(expanded = expanded.dumbSelection.contains(item.getScenarioId()))
-            is ScenarioListUiState.Item.ScenarioItem.Valid.Smart ->
-                item.copy(expanded = expanded.smartSelection.contains(item.getScenarioId()))
+                item.copy(expanded = expanded.contains(item.getScenarioId()))
             else -> item
         }
     }
-
-    private fun MutableSet<Long>.toggleExpandedSelection(id: Long): MutableSet<Long> {
-        if (!contains(id)) add(id)
-        else remove(id)
-
-        return this
-    }
 }
-
-data class ScenarioExpandedSelection(
-    val dumbSelection: Set<Long> = mutableSetOf(),
-    val smartSelection: Set<Long> = mutableSetOf(),
-)

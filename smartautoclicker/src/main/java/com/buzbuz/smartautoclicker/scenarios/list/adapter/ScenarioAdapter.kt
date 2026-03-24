@@ -16,7 +16,6 @@
  */
 package com.buzbuz.smartautoclicker.scenarios.list.adapter
 
-import android.graphics.Bitmap
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
@@ -24,15 +23,11 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 
 import com.buzbuz.smartautoclicker.R
-import com.buzbuz.smartautoclicker.core.domain.model.condition.ImageCondition
 import com.buzbuz.smartautoclicker.databinding.ItemDumbScenarioBinding
 import com.buzbuz.smartautoclicker.databinding.ItemEmptyScenarioBinding
 import com.buzbuz.smartautoclicker.databinding.ItemOrderingAndFilteringBinding
-import com.buzbuz.smartautoclicker.databinding.ItemSmartScenarioBinding
 import com.buzbuz.smartautoclicker.scenarios.list.model.ScenarioListUiState
 import com.buzbuz.smartautoclicker.scenarios.list.sort.ScenarioSortType
-
-import kotlinx.coroutines.Job
 
 /**
  * Adapter for the display of the click scenarios created by the user into a RecyclerView.
@@ -42,14 +37,12 @@ import kotlinx.coroutines.Job
  * @param deleteScenarioListener listener upon the delete button of a scenario.
  */
 class ScenarioAdapter(
-    private val bitmapProvider: (ImageCondition, onBitmapLoaded: (Bitmap?) -> Unit) -> Job?,
     private val startScenarioListener: ((ScenarioListUiState.Item.ScenarioItem) -> Unit),
     private val expandCollapseListener: ((ScenarioListUiState.Item.ScenarioItem) -> Unit),
     private val exportClickListener: ((ScenarioListUiState.Item.ScenarioItem) -> Unit),
     private val copyClickedListener: ((ScenarioListUiState.Item.ScenarioItem.Valid) -> Unit),
     private val deleteScenarioListener: ((ScenarioListUiState.Item.ScenarioItem) -> Unit),
     private val onSortTypeClicked: (ScenarioSortType) -> Unit,
-    private val onSmartChipClicked: (Boolean) -> Unit,
     private val onDumbChipClicked: (Boolean) -> Unit,
     private val onSortOrderClicked: (Boolean) -> Unit,
 ) : ListAdapter<ScenarioListUiState.Item, RecyclerView.ViewHolder>(ScenarioDiffUtilCallback) {
@@ -58,7 +51,6 @@ class ScenarioAdapter(
         when (getItem(position)) {
             is ScenarioListUiState.Item.ScenarioItem.Empty -> R.layout.item_empty_scenario
             is ScenarioListUiState.Item.ScenarioItem.Valid.Dumb -> R.layout.item_dumb_scenario
-            is ScenarioListUiState.Item.ScenarioItem.Valid.Smart -> R.layout.item_smart_scenario
             is ScenarioListUiState.Item.SortItem -> R.layout.item_ordering_and_filtering
         }
 
@@ -79,20 +71,10 @@ class ScenarioAdapter(
                 deleteScenarioListener = deleteScenarioListener,
             )
 
-            R.layout.item_smart_scenario -> SmartScenarioViewHolder(
-                viewBinding = ItemSmartScenarioBinding.inflate(LayoutInflater.from(parent.context), parent, false),
-                bitmapProvider= bitmapProvider,
-                startScenarioListener = startScenarioListener,
-                expandCollapseListener = expandCollapseListener,
-                exportClickListener = exportClickListener,
-                copyClickedListener = copyClickedListener,
-                deleteScenarioListener = deleteScenarioListener,
-            )
-
             R.layout.item_ordering_and_filtering -> SortViewHolder(
                 viewBinding = ItemOrderingAndFilteringBinding.inflate(LayoutInflater.from(parent.context), parent, false),
                 onSortTypeClicked = onSortTypeClicked,
-                onSmartChipClicked = onSmartChipClicked,
+                onSmartChipClicked = { /* No-op, smart not supported */ },
                 onDumbChipClicked = onDumbChipClicked,
                 onSortOrderClicked = onSortOrderClicked,
             )
@@ -104,7 +86,6 @@ class ScenarioAdapter(
         when (holder) {
             is EmptyScenarioHolder -> holder.onBind(getItem(position) as ScenarioListUiState.Item.ScenarioItem.Empty)
             is DumbScenarioViewHolder -> holder.onBind(getItem(position) as ScenarioListUiState.Item.ScenarioItem.Valid.Dumb)
-            is SmartScenarioViewHolder -> holder.onBind(getItem(position) as ScenarioListUiState.Item.ScenarioItem.Valid.Smart)
             is SortViewHolder -> holder.onBind(getItem(position) as ScenarioListUiState.Item.SortItem)
         }
     }
@@ -121,11 +102,7 @@ object ScenarioDiffUtilCallback: DiffUtil.ItemCallback<ScenarioListUiState.Item>
         when {
             oldItem is ScenarioListUiState.Item.ScenarioItem.Empty.Dumb && newItem is ScenarioListUiState.Item.ScenarioItem.Empty.Dumb ->
                 oldItem.scenario.id == newItem.scenario.id
-            oldItem is ScenarioListUiState.Item.ScenarioItem.Empty.Smart && newItem is ScenarioListUiState.Item.ScenarioItem.Empty.Smart ->
-                oldItem.scenario.id == newItem.scenario.id
             oldItem is ScenarioListUiState.Item.ScenarioItem.Valid.Dumb && newItem is ScenarioListUiState.Item.ScenarioItem.Valid.Dumb ->
-                oldItem.scenario.id == newItem.scenario.id
-            oldItem is ScenarioListUiState.Item.ScenarioItem.Valid.Smart && newItem is ScenarioListUiState.Item.ScenarioItem.Valid.Smart ->
                 oldItem.scenario.id == newItem.scenario.id
             oldItem is ScenarioListUiState.Item.SortItem && newItem is ScenarioListUiState.Item.SortItem -> true
             else -> false

@@ -25,8 +25,4 @@ plugins {
     alias(libs.plugins.jetbrainsKotlinSerialization) apply false
     alias(libs.plugins.androidxNavigationSafeArgs) apply false
     alias(libs.plugins.androidxRoom) apply false
-
-    // PlayStore version only
-    alias(libs.plugins.googleCrashlytics) apply false
-    alias(libs.plugins.googleGms) apply false
 }

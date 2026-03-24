@@ -17,7 +17,6 @@
 package com.buzbuz.smartautoclicker
 
 import android.accessibilityservice.AccessibilityService
-import android.app.Notification
 import android.content.Intent
 import android.util.Log
 import android.view.KeyEvent
@@ -26,23 +25,17 @@ import android.view.accessibility.AccessibilityEvent
 import com.buzbuz.smartautoclicker.core.base.Dumpable
 import com.buzbuz.smartautoclicker.core.base.data.AppComponentsProvider
 import com.buzbuz.smartautoclicker.core.base.extensions.requestFilterKeyEvents
-import com.buzbuz.smartautoclicker.core.base.extensions.startForegroundMediaProjectionServiceCompat
 import com.buzbuz.smartautoclicker.core.base.notifications.NotificationIds
-import com.buzbuz.smartautoclicker.core.bitmaps.BitmapRepository
 import com.buzbuz.smartautoclicker.core.common.actions.AndroidActionExecutor
 import com.buzbuz.smartautoclicker.core.common.overlays.manager.OverlayManager
 import com.buzbuz.smartautoclicker.core.common.quality.domain.QualityMetricsMonitor
 import com.buzbuz.smartautoclicker.core.common.quality.domain.QualityRepository
 import com.buzbuz.smartautoclicker.core.display.config.DisplayConfigManager
-import com.buzbuz.smartautoclicker.core.domain.model.scenario.Scenario
 import com.buzbuz.smartautoclicker.core.dumb.domain.model.DumbScenario
 import com.buzbuz.smartautoclicker.core.dumb.engine.DumbEngine
-import com.buzbuz.smartautoclicker.core.processing.domain.SmartProcessingRepository
 import com.buzbuz.smartautoclicker.core.settings.SettingsRepository
 import com.buzbuz.smartautoclicker.feature.qstile.domain.QSTileActionHandler
 import com.buzbuz.smartautoclicker.feature.qstile.domain.QSTileRepository
-import com.buzbuz.smartautoclicker.feature.revenue.IRevenueRepository
-import com.buzbuz.smartautoclicker.feature.review.ReviewRepository
 import com.buzbuz.smartautoclicker.localservice.LocalService
 import com.buzbuz.smartautoclicker.localservice.LocalServiceProvider
 
@@ -55,15 +48,8 @@ import javax.inject.Inject
  * AccessibilityService implementation for the SmartAutoClicker.
  *
  * Started automatically by Android once the user has defined this service has an accessibility service, it provides
- * an API to start and stop the DetectorEngine correctly in order to display the overlay UI and record the screen for
- * clicks detection.
+ * an API to start and stop the DumbEngine correctly in order to display the overlay UI and execute auto-click actions.
  * This API is offered through the [LocalService] class, which is instantiated in the [LocalServiceProvider] object.
- * This system is used instead of the usual binder interface because an [AccessibilityService] already has its own
- * binder and it can't be changed. To access this local service, use [LocalServiceProvider].
- *
- * We need this service to be an accessibility service in order to inject the detected event on the currently
- * displayed activity. This injection is made by the [dispatchGesture] method, which is called everytime an event has
- * been detected.
  */
 @AndroidEntryPoint
 class SmartAutoClickerService : AccessibilityService() {
@@ -75,15 +61,11 @@ class SmartAutoClickerService : AccessibilityService() {
 
     @Inject lateinit var overlayManager: OverlayManager
     @Inject lateinit var displayConfigManager: DisplayConfigManager
-    @Inject lateinit var smartProcessingRepository: SmartProcessingRepository
     @Inject lateinit var dumbEngine: DumbEngine
-    @Inject lateinit var bitmapManager: BitmapRepository
     @Inject lateinit var qualityRepository: QualityRepository
     @Inject lateinit var qualityMetricsMonitor: QualityMetricsMonitor
     @Inject lateinit var settingsRepository: SettingsRepository
-    @Inject lateinit var revenueRepository: IRevenueRepository
     @Inject lateinit var tileRepository: QSTileRepository
-    @Inject lateinit var reviewRepository: ReviewRepository
     @Inject lateinit var appComponentsProvider: AppComponentsProvider
     @Inject lateinit var actionExecutor: AndroidActionExecutor
 
@@ -99,9 +81,6 @@ class SmartAutoClickerService : AccessibilityService() {
                 override fun startDumbScenario(dumbScenario: DumbScenario) {
                     localServiceProvider.localServiceInstance?.startDumbScenario(dumbScenario)
                 }
-                override fun startSmartScenario(resultCode: Int, data: Intent, scenario: Scenario) {
-                    localServiceProvider.localServiceInstance?.startSmartScenario(resultCode, data, scenario)
-                }
                 override fun stop() {
                     localServiceProvider.localServiceInstance?.stop()
                 }
@@ -113,9 +92,7 @@ class SmartAutoClickerService : AccessibilityService() {
                 context = this,
                 overlayManager = overlayManager,
                 appComponentsProvider = appComponentsProvider,
-                smartProcessingRepository = smartProcessingRepository,
                 dumbEngine = dumbEngine,
-                revenueRepository = revenueRepository,
                 settingsRepository = settingsRepository,
                 onStart = ::onLocalServiceStarted,
                 onStop = ::onLocalServiceStopped,
@@ -135,12 +112,11 @@ class SmartAutoClickerService : AccessibilityService() {
         return super.onUnbind(intent)
     }
 
-    private fun onLocalServiceStarted(scenarioId: Long, isSmart: Boolean, serviceNotification: Notification?) {
-        reviewRepository.onUserSessionStarted()
+    private fun onLocalServiceStarted(scenarioId: Long, isSmart: Boolean, serviceNotification: android.app.Notification?) {
         qualityMetricsMonitor.onServiceForegroundStart()
 
         serviceNotification?.let {
-            startForegroundMediaProjectionServiceCompat(NotificationIds.FOREGROUND_SERVICE_NOTIFICATION_ID, it)
+            startForeground(NotificationIds.FOREGROUND_SERVICE_NOTIFICATION_ID, it)
         }
         requestFilterKeyEvents(true)
 
@@ -150,23 +126,12 @@ class SmartAutoClickerService : AccessibilityService() {
 
     private fun onLocalServiceStopped() {
         qualityMetricsMonitor.onServiceForegroundEnd()
-        reviewRepository.onUserSessionStopped()
         actionExecutor.resetState()
-
-        if (reviewRepository.isUserCandidateForReview()) {
-            Log.i(TAG, "User is candidate for review, ")
-
-            reviewRepository.getReviewActivityIntent(this)?.let { intent ->
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                startActivity(intent)
-            }
-        }
 
         requestFilterKeyEvents(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
 
         displayConfigManager.stopMonitoring()
-        bitmapManager.clearCache()
     }
 
     override fun onKeyEvent(event: KeyEvent?): Boolean =
@@ -181,19 +146,14 @@ class SmartAutoClickerService : AccessibilityService() {
 
         writer.append("* SmartAutoClickerService:").println()
         writer.append(Dumpable.DUMP_DISPLAY_TAB)
-            .append("- isStarted=").append("${localService?.isStarted ?: false}; ")
+            .append("- isStarted=${localService?.started ?: false}; ")
             .println()
 
         displayConfigManager.dump(writer)
-        bitmapManager.dump(writer)
         overlayManager.dump(writer)
-        smartProcessingRepository.dump(writer)
         dumbEngine.dump(writer)
         actionExecutor.dump(writer)
         qualityRepository.dump(writer)
-
-        revenueRepository.dump(writer)
-        reviewRepository.dump(writer)
     }
 
     override fun onInterrupt() { /* Unused */ }

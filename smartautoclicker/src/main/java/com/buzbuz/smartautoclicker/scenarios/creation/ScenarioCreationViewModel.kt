@@ -24,14 +24,8 @@ import androidx.lifecycle.viewModelScope
 import com.buzbuz.smartautoclicker.R
 import com.buzbuz.smartautoclicker.core.base.identifier.DATABASE_ID_INSERTION
 import com.buzbuz.smartautoclicker.core.base.identifier.Identifier
-import com.buzbuz.smartautoclicker.core.display.config.DisplayConfigManager
-import com.buzbuz.smartautoclicker.core.domain.IRepository
-import com.buzbuz.smartautoclicker.core.domain.model.scenario.Scenario
 import com.buzbuz.smartautoclicker.core.dumb.domain.IDumbRepository
 import com.buzbuz.smartautoclicker.core.dumb.domain.model.DumbScenario
-import com.buzbuz.smartautoclicker.core.processing.domain.DETECTION_QUALITY_MIN
-import com.buzbuz.smartautoclicker.feature.revenue.IRevenueRepository
-import com.buzbuz.smartautoclicker.feature.revenue.UserBillingState
 
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -44,16 +38,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import kotlin.math.floor
-import kotlin.math.max
 
 @HiltViewModel
 class ScenarioCreationViewModel @Inject constructor(
     @ApplicationContext context: Context,
-    revenueRepository: IRevenueRepository,
-    private val smartRepository: IRepository,
     private val dumbRepository: IDumbRepository,
-    private val displayConfigManager: DisplayConfigManager,
 ) : ViewModel() {
 
     private val _name: MutableStateFlow<String?> =
@@ -63,19 +52,6 @@ class ScenarioCreationViewModel @Inject constructor(
         .take(1)
     val nameError: Flow<Boolean> = _name
         .map { it.isNullOrEmpty() }
-
-    private val _selectedType: MutableStateFlow<ScenarioTypeSelection> =
-        MutableStateFlow(ScenarioTypeSelection.SMART)
-    val scenarioTypeSelectionState: Flow<ScenarioTypeSelectionState> =
-        combine(_selectedType, revenueRepository.userBillingState) { selectedType, billingState ->
-            ScenarioTypeSelectionState(
-                dumbItem = ScenarioTypeItem.Dumb,
-                smartItem = ScenarioTypeItem.Smart,
-                selectedItem = selectedType,
-                showPaidLimitationWarning =
-                    billingState == UserBillingState.PURCHASED && selectedType == ScenarioTypeSelection.SMART
-            )
-        }
 
     private val canBeCreated: Flow<Boolean> = _name.map { name -> !name.isNullOrEmpty() }
     private val _creationState: MutableStateFlow<CreationState> =
@@ -89,19 +65,12 @@ class ScenarioCreationViewModel @Inject constructor(
         _name.value = newName
     }
 
-    fun setSelectedType(type: ScenarioTypeSelection) {
-        _selectedType.value = type
-    }
-
     fun createScenario() {
         if (isInvalidForCreation() || _creationState.value != CreationState.CONFIGURING) return
 
         _creationState.value = CreationState.CREATING
         viewModelScope.launch(Dispatchers.IO) {
-            when (_selectedType.value) {
-                ScenarioTypeSelection.DUMB -> createDumbScenario()
-                ScenarioTypeSelection.SMART -> createSmartScenario()
-            }
+            createDumbScenario()
             _creationState.value = CreationState.SAVED
         }
     }
@@ -121,55 +90,7 @@ class ScenarioCreationViewModel @Inject constructor(
         )
     }
 
-    private suspend fun createSmartScenario() {
-        smartRepository.addScenario(
-            Scenario(
-                id = Identifier(databaseId = DATABASE_ID_INSERTION, tempId = 0L),
-                name = _name.value!!,
-                detectionQuality = getDefaultDetectionQuality(),
-                randomize = false,
-            )
-        )
-    }
-
-    private fun getDefaultDetectionQuality(): Int {
-        val displaySize = displayConfigManager.displayConfig.sizePx
-        val biggestScreenSideSize: Int = max(displaySize.x, displaySize.y)
-
-        return max(
-            DETECTION_QUALITY_MIN.toInt(),
-            floor(biggestScreenSideSize / DEFAULT_DETECTION_QUALITY_RATIO).toInt(),
-        )
-    }
-
     private fun isInvalidForCreation(): Boolean = _name.value.isNullOrEmpty()
-}
-
-
-data class ScenarioTypeSelectionState(
-    val dumbItem: ScenarioTypeItem.Dumb,
-    val smartItem: ScenarioTypeItem.Smart,
-    val selectedItem: ScenarioTypeSelection,
-    val showPaidLimitationWarning: Boolean,
-)
-
-sealed class ScenarioTypeItem(val titleRes: Int, val iconRes: Int, val descriptionText: Int) {
-
-    data object Dumb: ScenarioTypeItem(
-        titleRes = R.string.item_title_dumb_scenario,
-        iconRes = R.drawable.ic_dumb,
-        descriptionText = R.string.item_desc_dumb_scenario,
-    )
-
-    data object Smart: ScenarioTypeItem(
-        titleRes = R.string.item_title_smart_scenario,
-        iconRes = R.drawable.ic_smart,
-        descriptionText = R.string.item_desc_smart_scenario,
-    )
-}
-enum class ScenarioTypeSelection {
-    DUMB,
-    SMART,
 }
 
 enum class CreationState {
@@ -178,5 +99,3 @@ enum class CreationState {
     CREATING,
     SAVED,
 }
-
-private const val DEFAULT_DETECTION_QUALITY_RATIO = 2.05

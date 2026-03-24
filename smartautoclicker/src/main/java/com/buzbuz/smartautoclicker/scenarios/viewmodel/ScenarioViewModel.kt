@@ -17,47 +17,34 @@
 package com.buzbuz.smartautoclicker.scenarios.viewmodel
 
 import android.Manifest
-import android.app.Activity
-import android.app.NotificationManager
 import android.content.Context
-import android.content.Intent
 import android.os.Build
 
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.PermissionChecker
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 
 import com.buzbuz.smartautoclicker.core.base.data.AppComponentsProvider
 import com.buzbuz.smartautoclicker.core.common.quality.domain.QualityRepository
-import com.buzbuz.smartautoclicker.core.domain.model.scenario.Scenario
 import com.buzbuz.smartautoclicker.core.dumb.domain.model.DumbScenario
 import com.buzbuz.smartautoclicker.core.common.permissions.PermissionsController
 import com.buzbuz.smartautoclicker.core.common.permissions.model.PermissionAccessibilityService
 import com.buzbuz.smartautoclicker.core.common.permissions.model.PermissionOverlay
 import com.buzbuz.smartautoclicker.core.common.permissions.model.PermissionPostNotification
-import com.buzbuz.smartautoclicker.core.settings.SettingsRepository
-import com.buzbuz.smartautoclicker.feature.revenue.IRevenueRepository
-import com.buzbuz.smartautoclicker.feature.revenue.UserConsentState
 import com.buzbuz.smartautoclicker.localservice.ILocalService
 import com.buzbuz.smartautoclicker.localservice.LocalServiceProvider
 
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
 /** AndroidViewModel for create/delete/list click scenarios from an LifecycleOwner. */
 @HiltViewModel
 class ScenarioViewModel @Inject constructor(
     @ApplicationContext context: Context,
-    private val revenueRepository: IRevenueRepository,
     private val qualityRepository: QualityRepository,
     private val permissionController: PermissionsController,
-    private val settingsRepository: SettingsRepository,
     private val appComponentsProvider: AppComponentsProvider,
 ) : ViewModel() {
 
@@ -71,36 +58,14 @@ class ScenarioViewModel @Inject constructor(
      * Will be not null only if the Accessibility Service is enabled.
      */
     private var clickerService: ILocalService? = null
-    /** The Android notification manager. Initialized only if needed.*/
-    private val notificationManager: NotificationManager?
-
-    val userConsentState: StateFlow<UserConsentState> = revenueRepository.userConsentState
-        .stateIn(viewModelScope, SharingStarted.Eagerly, UserConsentState.UNKNOWN)
 
     init {
         LocalServiceProvider.getLocalService(serviceConnection)
-
-        notificationManager =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-                context.getSystemService(NotificationManager::class.java)
-            else null
     }
 
     override fun onCleared() {
         LocalServiceProvider.getLocalService(null)
         super.onCleared()
-    }
-
-    fun isEntireScreenCaptureForced(): Boolean =
-        settingsRepository.isEntireScreenCaptureForced()
-
-    fun requestUserConsentIfNeeded(activity: Activity) {
-        revenueRepository.refreshPurchases()
-        revenueRepository.startUserConsentRequestUiFlowIfNeeded(activity)
-    }
-
-    fun refreshPurchaseState() {
-        revenueRepository.refreshPurchases()
     }
 
     fun startPermissionFlowIfNeeded(activity: AppCompatActivity, onAllGranted: () -> Unit) {
@@ -122,31 +87,6 @@ class ScenarioViewModel @Inject constructor(
         qualityRepository.startTroubleshootingUiFlowIfNeeded(activity, onCompleted)
     }
 
-    /**
-     * Start the overlay UI and instantiates the detection objects for a given scenario.
-     *
-     * This requires the media projection permission code and its data intent, they both can be retrieved using the
-     * results of the activity intent provided by
-     * [android.media.projection.MediaProjectionManager.createScreenCaptureIntent] (this Intent shows the dialog
-     * warning about screen recording privacy). Any attempt to call this method without the correct screen capture
-     * intent result will leads to a crash.
-     *
-     * @param resultCode the result code provided by the screen capture intent activity result callback
-     * [android.app.Activity.onActivityResult]
-     * @param data the data intent provided by the screen capture intent activity result callback
-     * [android.app.Activity.onActivityResult]
-     * @param scenario the identifier of the scenario of clicks to be used for detection.
-     */
-    fun loadSmartScenario(context: Context, resultCode: Int, data: Intent, scenario: Scenario): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val foregroundPermission = PermissionChecker.checkSelfPermission(context, Manifest.permission.FOREGROUND_SERVICE)
-            if (foregroundPermission != PermissionChecker.PERMISSION_GRANTED) return false
-        }
-
-        clickerService?.startSmartScenario(resultCode, data, scenario)
-        return true
-    }
-
     fun loadDumbScenario(context: Context, scenario: DumbScenario): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val foregroundPermission = PermissionChecker.checkSelfPermission(context, Manifest.permission.FOREGROUND_SERVICE)
@@ -162,4 +102,3 @@ class ScenarioViewModel @Inject constructor(
         clickerService?.stop()
     }
 }
-

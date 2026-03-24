@@ -22,7 +22,6 @@ import androidx.lifecycle.viewModelScope
 import com.buzbuz.smartautoclicker.core.base.di.Dispatcher
 import com.buzbuz.smartautoclicker.core.base.di.HiltCoroutineDispatchers.IO
 import com.buzbuz.smartautoclicker.core.base.di.HiltCoroutineDispatchers.Main
-import com.buzbuz.smartautoclicker.core.domain.IRepository
 import com.buzbuz.smartautoclicker.core.dumb.domain.DumbRepository
 
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -38,7 +37,6 @@ import javax.inject.Inject
 class ScenarioCopyViewModel @Inject constructor(
     @param:Dispatcher(Main) private val mainDispatcher: CoroutineDispatcher,
     @param:Dispatcher(IO) private val ioDispatcher: CoroutineDispatcher,
-    private val smartRepository: IRepository,
     private val dumbRepository: DumbRepository,
 ) : ViewModel() {
 
@@ -55,8 +53,7 @@ class ScenarioCopyViewModel @Inject constructor(
         if (name.isNullOrEmpty()) return
 
         viewModelScope.launch(ioDispatcher) {
-            if (isSmart) smartRepository.addScenarioCopy(scenarioId, name)
-            else dumbRepository.addDumbScenarioCopy(scenarioId, name)
+            dumbRepository.addDumbScenarioCopy(scenarioId, name)
 
             withContext(mainDispatcher) {
                 onCompleted()

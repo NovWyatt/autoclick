@@ -81,10 +81,7 @@ android {
 // Apply signature convention after declaring the signingConfigs
 apply { plugin(libs.plugins.buzbuz.androidSigning.get().pluginId) }
 
-// Only apply gms/firebase plugins if we are building for the play store
-if (project.isBuildForVariant(KlickrFlavour.PLAY_STORE, KlickrBuildType.RELEASE)) {
-    apply { plugin(libs.plugins.buzbuz.crashlytics.get().pluginId) }
-}
+
 
 dependencies {
     implementation(libs.kotlinx.coroutines.core)
@@ -115,17 +112,8 @@ dependencies {
     implementation(project(":core:common:settings"))
     implementation(project(":core:common:ui"))
     implementation(project(":core:dumb"))
-    implementation(project(":core:smart:detection"))
-    implementation(project(":core:smart:domain"))
-    implementation(project(":core:smart:processing"))
 
-    implementation(project(":feature:backup"))
     implementation(project(":feature:notifications"))
     implementation(project(":feature:quick-settings-tile"))
-    implementation(project(":feature:revenue"))
-    implementation(project(":feature:review"))
-    implementation(project(":feature:smart-config"))
-    implementation(project(":feature:smart-debugging"))
     implementation(project(":feature:dumb-config"))
-    implementation(project(":feature:tutorial"))
 }

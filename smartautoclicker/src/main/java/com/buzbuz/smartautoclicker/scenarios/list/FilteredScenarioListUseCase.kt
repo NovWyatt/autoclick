@@ -18,8 +18,6 @@ package com.buzbuz.smartautoclicker.scenarios.list
 
 import android.content.Context
 import com.buzbuz.smartautoclicker.R
-import com.buzbuz.smartautoclicker.core.domain.IRepository
-import com.buzbuz.smartautoclicker.core.domain.model.scenario.Scenario
 import com.buzbuz.smartautoclicker.core.dumb.domain.IDumbRepository
 import com.buzbuz.smartautoclicker.core.dumb.domain.model.DumbAction
 import com.buzbuz.smartautoclicker.core.dumb.domain.model.DumbScenario
@@ -44,7 +42,6 @@ class FilteredScenarioListUseCase @Inject constructor(
     dumbRepository: IDumbRepository,
     sortConfigRepository: ScenarioSortConfigRepository,
     settingsRepository: SettingsRepository,
-    private val smartRepository: IRepository,
 ) {
 
     /** The currently searched action name. Null if no is. */
@@ -52,16 +49,13 @@ class FilteredScenarioListUseCase @Inject constructor(
 
     private val refresh: MutableSharedFlow<Unit> = MutableSharedFlow(replay = 1)
 
-    /** Dumb & Smart scenario together. */
+    /** Dumb scenarios only. */
     private val allScenarios: Flow<List<ScenarioListUiState.Item.ScenarioItem>> =
-        combine(refresh, dumbRepository.dumbScenarios, smartRepository.scenarios) { _, dumbList, smartList ->
-            mutableListOf<ScenarioListUiState.Item.ScenarioItem>().apply {
-                addAll(dumbList.map { it.toItem(context) })
-                addAll(smartList.map { it.toItem() })
-            }
+        combine(refresh, dumbRepository.dumbScenarios) { _, dumbList ->
+            dumbList.map { it.toItem(context) }
         }
 
-    /** Flow upon the list of Dumb & Smart scenarios, filtered with the search query and ordered with the sort config */
+    /** Flow upon the list of Dumb scenarios, filtered with the search query and ordered with the sort config */
     val orderedItems: Flow<List<ScenarioListUiState.Item>> =
         combine(
             allScenarios,
@@ -74,7 +68,6 @@ class FilteredScenarioListUseCase @Inject constructor(
                     val filteredAndSortedItems = scenarios.sortAndFilter(sortConfig)
                     val sortItem = ScenarioListUiState.Item.SortItem(
                         sortType = sortConfig.type,
-                        smartVisible = sortConfig.showSmartScenario,
                         dumbVisible = sortConfig.showDumbScenario,
                         changeOrderChecked = sortConfig.inverted,
                     )
@@ -102,29 +95,6 @@ class FilteredScenarioListUseCase @Inject constructor(
     suspend fun refresh() {
         refresh.emit(Unit)
     }
-
-    private suspend fun Scenario.toItem(): ScenarioListUiState.Item.ScenarioItem =
-        if (eventCount == 0) ScenarioListUiState.Item.ScenarioItem.Empty.Smart(
-            scenario = this,
-            lastStartTimestamp = stats?.lastStartTimestampMs ?: 0,
-            startCount = stats?.startCount ?: 0
-        )
-        else ScenarioListUiState.Item.ScenarioItem.Valid.Smart(
-            scenario = this,
-            eventsItems = smartRepository.getImageEvents(id.databaseId).map { event ->
-                ScenarioListUiState.Item.ScenarioItem.Valid.Smart.EventItem(
-                    id = event.id.databaseId,
-                    eventName = event.name,
-                    actionsCount = event.actions.size,
-                    conditionsCount = event.conditions.size,
-                    firstCondition = if (event.conditions.isNotEmpty()) event.conditions.first() else null,
-                )
-            },
-            triggerEventCount = smartRepository.getTriggerEvents(id.databaseId).size,
-            detectionQuality = detectionQuality,
-            lastStartTimestamp = stats?.lastStartTimestampMs ?: 0,
-            startCount = stats?.startCount ?: 0
-        )
 
     private fun DumbScenario.toItem(context: Context): ScenarioListUiState.Item.ScenarioItem =
         if (dumbActions.isEmpty()) ScenarioListUiState.Item.ScenarioItem.Empty.Dumb(
@@ -166,22 +136,17 @@ private fun Collection<ScenarioListUiState.Item.ScenarioItem>.sortAndFilter(
     sortConfig: ScenarioSortConfig,
 ): Collection<ScenarioListUiState.Item.ScenarioItem> {
 
-    val filteredList = filter { item ->
-        (sortConfig.showSmartScenario && item.scenario is Scenario) ||
-                (sortConfig.showDumbScenario && item.scenario is DumbScenario)
-    }
-
     return when (sortConfig.type) {
         ScenarioSortType.NAME ->
-            if (sortConfig.inverted) filteredList.sortedByDescending { it.displayName }
-            else filteredList.sortedBy { it.displayName }
+            if (sortConfig.inverted) sortedByDescending { it.displayName }
+            else sortedBy { it.displayName }
 
         ScenarioSortType.RECENT ->
-            if (sortConfig.inverted) filteredList.sortedBy { it.lastStartTimestamp }
-            else filteredList.sortedByDescending { it.lastStartTimestamp }
+            if (sortConfig.inverted) sortedBy { it.lastStartTimestamp }
+            else sortedByDescending { it.lastStartTimestamp }
 
         ScenarioSortType.MOST_USED ->
-            if (sortConfig.inverted) filteredList.sortedBy { it.startCount }
-            else filteredList.sortedByDescending { it.startCount }
+            if (sortConfig.inverted) sortedBy { it.startCount }
+            else sortedByDescending { it.startCount }
     }
 }
